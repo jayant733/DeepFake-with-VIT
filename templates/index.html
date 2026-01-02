@@ -141,7 +141,6 @@
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             border: 2px solid rgba(255, 255, 255, 0.1);
             transition: all 0.3s ease;
-            display: block;
         }
         
         #imagePreview:hover {
@@ -397,12 +396,41 @@
     </form>
     
     <script>
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+        const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
+
         function previewImage(event) {
             const imageInput = document.getElementById('imageInput');
             const imagePreview = document.getElementById('imagePreview');
+            const detectionResult = document.getElementById('detectionResult');
             const file = imageInput.files[0];
 
+            // Clear previous result
+            detectionResult.innerHTML = '';
+            detectionResult.style.color = '#ffffff';
+            detectionResult.style.background = 'rgba(255, 255, 255, 0.05)';
+
             if (file) {
+                // Validate file size
+                if (file.size > MAX_FILE_SIZE) {
+                    detectionResult.innerHTML = `❌ Error: File too large. Maximum size is ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(1)}MB`;
+                    detectionResult.style.color = '#ff6b6b';
+                    detectionResult.style.background = 'rgba(255, 107, 107, 0.1)';
+                    imageInput.value = '';
+                    return;
+                }
+
+                // Validate file extension
+                const fileExtension = file.name.split('.').pop().toLowerCase();
+                if (!ALLOWED_EXTENSIONS.includes(fileExtension)) {
+                    detectionResult.innerHTML = `❌ Error: Invalid file type. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}`;
+                    detectionResult.style.color = '#ff6b6b';
+                    detectionResult.style.background = 'rgba(255, 107, 107, 0.1)';
+                    imageInput.value = '';
+                    return;
+                }
+
+                // Show preview
                 const url = URL.createObjectURL(file);
                 imagePreview.src = url;
                 imagePreview.style.display = 'block';
@@ -417,7 +445,9 @@
             const file = imageInput.files[0];
 
             if (!file) {
-                alert('Please upload an image file.');
+                detectionResult.innerHTML = '❌ Please upload an image file.';
+                detectionResult.style.color = '#ff6b6b';
+                detectionResult.style.background = 'rgba(255, 107, 107, 0.1)';
                 return;
             }
 
@@ -428,19 +458,43 @@
             formData.append('image', file);
 
             fetch('/predict', {
-                    method: 'POST',
-                    body: formData,
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(data => {
+                            throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                        });
+                    }
+                    return response.json();
                 })
-                .then(response => response.json())
                 .then(data => {
                     imageSpinner.style.display = 'none';
-
-                    detectionResult.innerHTML = `Prediction: ${data.prediction} <br> Confidence: ${data.confidence.toFixed(2)}`;
+                    
+                    const confidencePercent = (data.confidence * 100).toFixed(2);
+                    const predictionEmoji = data.prediction === 'Real' ? '✅' : '⚠️';
+                    const colors = {
+                        'Real': { text: '#4ecdc4', bg: 'rgba(78, 205, 196, 0.1)' },
+                        'Fake': { text: '#ff6b6b', bg: 'rgba(255, 107, 107, 0.1)' }
+                    };
+                    const color = colors[data.prediction] || { text: '#ffffff', bg: 'rgba(255, 255, 255, 0.05)' };
+                    
+                    detectionResult.innerHTML = `
+                        ${predictionEmoji} <strong>Prediction:</strong> ${data.prediction}<br>
+                        <strong>Confidence:</strong> ${confidencePercent}%
+                    `;
+                    detectionResult.style.color = color.text;
+                    detectionResult.style.background = color.bg;
+                    detectionResult.style.borderColor = color.text;
                 })
                 .catch(error => {
-                    console.error('Error:', error);
-                    detectionResult.innerHTML = 'An error occurred while processing the image.';
                     imageSpinner.style.display = 'none';
+                    console.error('Error:', error);
+                    const errorMessage = error.message || 'An error occurred while processing the image.';
+                    detectionResult.innerHTML = `❌ ${errorMessage}`;
+                    detectionResult.style.color = '#ff6b6b';
+                    detectionResult.style.background = 'rgba(255, 107, 107, 0.1)';
                 });
         }
     </script>
